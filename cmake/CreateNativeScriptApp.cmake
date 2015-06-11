@@ -17,7 +17,7 @@ function(CreateNativeScriptApp _target _main _plist _resources)
             libz.dylib
             libc++.dylib
         )
-        
+
         if(NOT ${EMBED_STATIC_DEPENDENCIES})
             target_link_libraries(${_target} ${WEBKIT_LIBRARIES} ffi)
         endif()
@@ -32,6 +32,12 @@ function(CreateNativeScriptApp _target _main _plist _resources)
         COMPILE_FLAGS "-fobjc-arc"
         XCODE_ATTRIBUTE_GCC_C_LANGUAGE_STANDARD "gnu99"
         XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT[variant=Debug] "DWARF"
+    )
+
+    add_custom_command(TARGET ${_target}
+        POST_BUILD
+        COMMAND /usr/local/bin/node ${CMAKE_SOURCE_DIR}/build/scripts/generateRequireMap > require-map.json # TODO
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/app/"
     )
 
     include(SetActiveArchitectures)

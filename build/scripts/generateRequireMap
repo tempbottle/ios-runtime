@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+
+(function () {
+    "use strict";
+
+    var fs = require('fs');
+    var path = require('path');
+    var util = require('util');
+
+    function isHiddenUnixFile(path) {
+        return path[0] === '.';
+    }
+
+    function isDirectory(path) {
+        var stats = fs.statSync(path);
+        return stats.isDirectory();
+    }
+
+    function isFile(path) {
+        var stats = fs.statSync(path);
+        return stats.isFile();
+    }
+
+    function isJavaScriptFile(path) {
+        return isFile(path) && /\.js$/.test(path);
+    }
+
+    var fileMap = {};
+
+    var directoryStack = ['.'];
+
+    while (directoryStack.length > 0) {
+        var currentDirectory = directoryStack.pop();
+        var currentDirectoryName = currentDirectory === '.' ? '' : currentDirectory;
+
+        fileMap[currentDirectoryName] = path.join(currentDirectory, (currentDirectoryName === '' ? 'bootstrap.js' : 'index.js'));
+
+        var packageJsonPath = path.join(currentDirectory, 'package.json');
+        if (fs.existsSync(packageJsonPath) && isFile(packageJsonPath)) {
+            var packageJsonString = fs.readFileSync(packageJsonPath).toString().replace(/^\uFEFF/, ''); // Trim BOM
+            try {
+                var packageJson = JSON.parse(packageJsonString);
+            } catch (e) {
+                console.error(util.format('Error parsing "%s": %s.', packageJsonPath, e.message));
+                process.exit(1);
+            }
+
+            var mainScript = packageJson['main'];
+            if (mainScript) {
+                fileMap[currentDirectoryName] = path.join(currentDirectory, mainScript);
+            }
+        }
+
+        var files = fs.readdirSync(currentDirectory);
+        files.forEach(function (currentFile) {
+            var currentPath = path.join(currentDirectory, currentFile);
+
+            if (isHiddenUnixFile(currentFile)) {
+                return;
+            }
+
+            if (isDirectory(currentPath)) {
+                directoryStack.push(currentPath);
+                return
+            }
+
+            if (isJavaScriptFile(currentPath)) {
+                var currentPathWithoutExtension = currentPath.replace(/\.js$/, '');
+                fileMap[currentPathWithoutExtension] = currentPath;
+            }
+        });
+    }
+
+    console.log(JSON.stringify(fileMap, null, '  '));
+}());

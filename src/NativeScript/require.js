@@ -19,12 +19,11 @@
     var CORE_MODULES_ROOT = nsstr('app/tns_modules');
 
     var isDirectory = new interop.Reference(interop.types.bool, false);
+    var requireMap = JSON.parse(NSString.stringWithContentsOfFileEncodingError(NSString.pathWithComponents([applicationPath, USER_MODULES_ROOT, 'require-map.json']), NSUTF8StringEncoding, null));
 
     function __findModule(moduleIdentifier, previousPath) {
-        var isBootstrap = !previousPath;
-        if (isBootstrap) {
-            previousPath = NSString.pathWithComponents([USER_MODULES_ROOT, 'index.js']).toString();
-        }
+        previousPath = previousPath || USER_MODULES_ROOT + '/index.js';
+
         var absolutePath;
         if (/^\.{1,2}\//.test(moduleIdentifier)) { // moduleIdentifier starts with ./ or ../
             var moduleDir = nsstr(previousPath).stringByDeletingLastPathComponent;
@@ -36,46 +35,28 @@
             absolutePath = NSString.pathWithComponents([applicationPath, moduleDir, moduleIdentifier]);
         }
 
-        if (fileManager.fileExistsAtPathIsDirectory(absolutePath, isDirectory)) {
-            if (!isDirectory.value) {
-                throw new ModuleError("Expected '" + absolutePath + "' to be a directory");
-            }
-
-            var mainFileName = isBootstrap ? "bootstrap.js" : "index.js";
-
-            var packageJsonPath = nsstr(absolutePath).stringByAppendingPathComponent("package.json");
-            var packageJson = NSString.stringWithContentsOfFileEncodingError(packageJsonPath, NSUTF8StringEncoding, null);
-            if (packageJson) {
-                //console.debug("PACKAGE_FOUND: " + packageJsonPath);
-
-                try {
-                    mainFileName = JSON.parse(packageJson).main || mainFileName;
-                } catch (e) {
-                    throw new ModuleError("Error parsing package.json in '" + absolutePath + "' - " + e);
-                }
-            }
-
-            absolutePath = nsstr(absolutePath).stringByAppendingPathComponent(mainFileName);
-        } else {
-            absolutePath = nsstr(absolutePath).stringByAppendingPathExtension("js");
-        }
         absolutePath = nsstr(absolutePath).stringByStandardizingPath;
 
-        if (fileManager.fileExistsAtPathIsDirectory(absolutePath, isDirectory)) {
-            if (isDirectory.value) {
-                throw new ModuleError("Expected '" + absolutePath + "' to be a file");
-            }
-
-            //console.debug('FIND_MODULE:', moduleIdentifier, absolutePath);
-
-            return {
-                name: nsstr(moduleIdentifier).lastPathComponent,
-                path: absolutePath,
-                bundlePath: absolutePath.substr(applicationPath.length)
-            };
+        // TODO
+        var relativePath;
+        if (absolutePath.indexOf(applicationPath) === 0) {
+            relativePath = absolutePath.substring(applicationPath.length + 2 + USER_MODULES_ROOT.length);
         } else {
+            relativePath = absolutePath;
+        }
+        var resolvedFile = requireMap[relativePath];
+
+        if (!resolvedFile) {
             throw new ModuleError("Failed to find module '" + moduleIdentifier + "' relative to '" + previousPath + "'. Computed path: " + absolutePath);
         }
+
+        absolutePath = NSString.pathWithComponents([applicationPath, USER_MODULES_ROOT, resolvedFile]).toString();
+
+        return {
+            name: nsstr(moduleIdentifier).lastPathComponent,
+            path: absolutePath,
+            bundlePath: absolutePath.substr(applicationPath.length)
+        };
     }
 
     function __executeModule(moduleMetadata, module) {
