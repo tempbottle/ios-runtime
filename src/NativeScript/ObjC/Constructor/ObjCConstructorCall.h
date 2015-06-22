@@ -32,9 +32,7 @@ public:
         return JSC::Structure::create(vm, globalObject, prototype, JSC::TypeInfo(JSC::ObjectType, StructureFlags), info());
     }
 
-    SEL selector() const {
-        return getArgument<SEL>(1);
-    }
+    SEL selector() const { return _selector; }
 
     Class klass() const {
         return this->_klass;
@@ -56,6 +54,8 @@ private:
     static void destroy(JSC::JSCell* cell) {
         JSC::jsCast<ObjCConstructorCall*>(cell)->~ObjCConstructorCall();
     }
+
+    SEL _selector;
 
     Class _klass;
 };

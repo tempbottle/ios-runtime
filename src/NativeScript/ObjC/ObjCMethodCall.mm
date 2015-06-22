@@ -59,10 +59,12 @@ void ObjCMethodCall::finishCreation(VM& vm, GlobalObject* globalObject, const Me
     this->setSelector(aSelector ?: metadata->selector());
 }
 
-EncodedJSValue JSC_HOST_CALL ObjCMethodCall::executeCall(ExecState* execState) {
-    ObjCMethodCall* self = jsCast<ObjCMethodCall*>(execState->callee());
+JSC::EncodedJSValue JSC_HOST_CALL ObjCMethodCall::executeCall(JSC::ExecState* execState) {
+    ObjCMethodCall* instance = jsCast<ObjCMethodCall*>(execState->callee());
+    FFICallFrame frame(instance, execState);
 
-    self->preCall(execState);
+    instance->preCall(frame);
+
     if (execState->hadException()) {
         return JSValue::encode(jsUndefined());
     }
@@ -74,25 +76,30 @@ EncodedJSValue JSC_HOST_CALL ObjCMethodCall::executeCall(ExecState* execState) {
         objc_super super = { target, class_getSuperclass(targetClass) };
 #ifdef DEBUG_OBJC_INVOCATION
         bool isInstance = !class_isMetaClass(targetClass);
-        NSLog(@"> %@[%@(%@) %@]", isInstance ? @"-" : @"+", NSStringFromClass(targetClass), NSStringFromClass(super.super_class), NSStringFromSelector(self->getArgument<SEL>(1)));
+        NSLog(@"> %@[%@(%@) %@]", isInstance ? @"-" : @"+", NSStringFromClass(targetClass), NSStringFromClass(super.super_class), NSStringFromSelector(instance->_selector));
 #endif
-        self->setArgument(0, &super);
-        self->executeFFICall(execState, FFI_FN(self->_msgSendSuper));
+        frame.setArgument(0, &super);
+        frame.setArgument(1, instance->_selector);
+        instance->executeFFICall(frame, FFI_FN(instance->_msgSendSuper));
     } else {
 #ifdef DEBUG_OBJC_INVOCATION
         bool isInstance = !class_isMetaClass(targetClass);
-        NSLog(@"> %@[%@ %@]", isInstance ? @"-" : @"+", NSStringFromClass(targetClass), NSStringFromSelector(self->getArgument<SEL>(1)));
+        NSLog(@"> %@[%@ %@]", isInstance ? @"-" : @"+", NSStringFromClass(targetClass), NSStringFromSelector(instance->_selector));
 #endif
-        self->setArgument(0, target);
-        self->executeFFICall(execState, FFI_FN(self->_msgSend));
+        frame.setArgument(0, target);
+        frame.setArgument(1, instance->_selector);
+        instance->executeFFICall(frame, FFI_FN(instance->_msgSend));
     }
 
-    JSValue result = self->postCall(execState);
-    if (self->retainsReturnedCocoaObjects()) {
-        id returnValue = *static_cast<id*>(self->getReturn());
+    instance->postCall(frame);
+    EncodedJSValue result = instance->encodedJSResult(frame);
+
+    if (instance->retainsReturnedCocoaObjects()) {
+        id returnValue = *static_cast<id*>(frame.result());
         [returnValue release];
     }
-    return JSValue::encode(result);
+
+    return result;
 }
 
 CallType ObjCMethodCall::getCallData(JSCell* cell, CallData& callData) {

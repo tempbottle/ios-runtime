@@ -12,17 +12,42 @@
 #include "FFIType.h"
 
 namespace NativeScript {
+
 class FFICall : public JSC::InternalFunction {
 public:
     typedef JSC::InternalFunction Base;
 
-    void* getReturn() {
-        return this->_return;
-    }
-
     DECLARE_INFO;
 
 protected:
+    class FFICallFrame {
+    public:
+        friend class FFICall;
+
+        FFICallFrame(FFICall* ffiCall, JSC::ExecState* execState);
+        ~FFICallFrame();
+
+        template <class T>
+        void setArgument(unsigned index, T argumentValue) {
+            *static_cast<T*>(this->_arguments[index]) = argumentValue;
+        }
+
+        template <class T>
+        T getArgument(unsigned index) const {
+            return *static_cast<T*>(this->_arguments[index]);
+        }
+
+        void* result() { return _result; }
+        void** arguments() { return _arguments; }
+        JSC::ExecState* execState() { return _execState; }
+
+    private:
+        JSC::ExecState* _execState;
+        FFICall* _ffiCall;
+        void* _result;
+        void** _arguments;
+    };
+
     FFICall(JSC::VM& vm, JSC::Structure* structure)
         : Base(vm, structure) {
     }
@@ -33,32 +58,22 @@ protected:
 
     static void visitChildren(JSC::JSCell*, JSC::SlotVisitor&);
 
-    void preCall(JSC::ExecState*);
+    void preCall(FFICallFrame& callFrame);
 
-    JSC::JSValue postCall(JSC::ExecState*);
+    void postCall(FFICallFrame& callFrame);
 
-    template <class T>
-    void setArgument(unsigned index, T argumentValue) {
-        *static_cast<T*>(this->_arguments[index]) = argumentValue;
+    void executeFFICall(FFICallFrame& frame, void (*function)(void)) {
+        JSC::JSLock::DropAllLocks locksDropper(frame.execState());
+        ffi_call(this->_cif, function, frame.result(), frame.arguments());
     }
 
-    template <class T>
-    T getArgument(unsigned index) const {
-        return *static_cast<T*>(this->_arguments[index]);
-    }
-
-    void executeFFICall(JSC::ExecState* execState, void (*function)(void)) {
-        JSC::JSLock::DropAllLocks locksDropper(execState);
-        ffi_call(this->_cif, function, this->_return, this->_arguments);
-    }
+    JSC::EncodedJSValue encodedJSResult(FFICallFrame& callFrame);
 
     JSC::WriteBarrier<JSC::JSCell> _returnTypeCell;
     FFITypeMethodTable _returnType;
-    void* _return;
 
     WTF::Vector<JSC::WriteBarrier<JSC::JSCell>> _parameterTypesCells;
     WTF::Vector<FFITypeMethodTable> _parameterTypes;
-    void** _arguments;
 
     size_t _initialArgumentIndex;
 

@@ -21,22 +21,22 @@ void FFIFunctionCall::finishCreation(VM& vm, const void* functionPointer, const 
     Base::initializeFFI(vm, returnType, parameterTypes);
 }
 
-EncodedJSValue FFIFunctionCall::executeCall(ExecState* execState) {
-    FFIFunctionCall* self = jsCast<FFIFunctionCall*>(execState->callee());
+EncodedJSValue JSC_HOST_CALL FFIFunctionCall::executeCall(ExecState* execState) {
+    FFIFunctionCall* instance = jsCast<FFIFunctionCall*>(execState->callee());
+    FFICallFrame frame(instance, execState);
 
-    self->preCall(execState);
+    instance->preCall(frame);
     if (execState->hadException()) {
         return JSValue::encode(jsUndefined());
     }
 
-    self->executeFFICall(execState, FFI_FN(self->_functionPointer));
-
-    JSValue result = self->postCall(execState);
-    if (self->retainsReturnedCocoaObjects()) {
-        id returnValue = *static_cast<id*>(self->getReturn());
+    instance->executeFFICall(frame, FFI_FN(instance->_functionPointer));
+    EncodedJSValue result = instance->encodedJSResult(frame);
+    if (instance->retainsReturnedCocoaObjects()) {
+        id returnValue = *static_cast<id*>(frame.result());
         [returnValue release];
     }
-    return JSValue::encode(result);
+    return result;
 }
 
 CallType FFIFunctionCall::getCallData(JSCell* cell, CallData& callData) {
